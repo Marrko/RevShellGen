@@ -24,11 +24,16 @@ def print_banner():
 
 def print_local_listener(port: int, silent: bool):
     if not silent:
-        local_listener = f"""
+        local_TCP_listener = f"""
         nc -nvlp {port}
         """.strip()
-        print(f"\n\n{colors.YELLOW}For local listener execute:{colors.WHITE}")
-        print(f"{local_listener}\n")
+        local_UDP_listener = f"""
+        nc -u -lvp {port}
+        """.strip()
+        print(f"\n\n{colors.YELLOW}For local TCP listener execute:{colors.WHITE}")
+        print(f"{local_TCP_listener}")
+        print(f"{colors.YELLOW}For local UDP listener execute:{colors.WHITE}")
+        print(f"{local_UDP_listener}\n")
 
 
 def get_ip_address(interface: str):

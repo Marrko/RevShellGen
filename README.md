@@ -9,6 +9,8 @@ The author accepts no liability for damage caused by this tool.**
 
 ## TODO
 - add other reverse shell payloads
+- check support for windows
+- check support for python2
 
 ## Usage
 Install required packages from `requirements.txt`.
